@@ -3,9 +3,13 @@ This project is a  HTTP server built in Rust, originally featuring a thread pool
 
 ## Added Features
 - **Thread Pool**: Efficiently handles multiple requests using a fixed number of worker threads.
-- **Rate Limiting**: Limits requests per IP to prevent abuse.
-- **Logging**: Logs requests and errors to a file.
-- **Dynamic HTML Rendering**: Serves HTML pages for various endpoints.
+- **Rate Limiting**: Limits requests per IP to prevent abuse (30 req/min, sliding window).
+- **Request Timeout**: 5-second timeout prevents slowloris attacks.
+- **Request Size Limit**: 8KB max prevents memory exhaustion.
+- **Comprehensive Logging**: Logs requests with timestamps, IP, method, path, status, and response time.
+- **Server Statistics**: Live stats on uptime, total requests, and average response time.
+- **Dynamic HTML Rendering**: Server-side rendered pages with template substitution.
+- **Atomic Operations**: Thread-safe stats using `AtomicU64` without race conditions.
 
 ## Setup and Installation
 1. **Clone the Repository**:
@@ -27,6 +31,40 @@ This project is a  HTTP server built in Rust, originally featuring a thread pool
    cargo run
    ```
    The server will start running on `http://127.0.0.1:7878`.
+
+## Testing
+
+Run all tests (lib + main):
+```bash
+cargo test
+```
+
+Run only ThreadPool unit tests:
+```bash
+cargo test --lib
+```
+
+Run only server integration tests:
+```bash
+cargo test --test '*' -- --ignored
+```
+
+### Test Coverage
+- **ThreadPool tests**: Creation, job execution, concurrency, panic on zero size
+- **Server tests**: Rate limiting, HTTP parsing, error responses, atomic stats updates
+
+## Documentation
+
+View auto-generated Rust documentation:
+```bash
+cargo doc --open
+```
+
+This displays:
+- ThreadPool API documentation
+- Function signatures and doc comments
+- Security considerations
+- Implementation notes
 
 ## Endpoints
 - **/**: Home page
