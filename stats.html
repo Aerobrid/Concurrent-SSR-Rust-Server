@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server Stats</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      min-height: 100vh;
+      font-family: 'Space Grotesk', sans-serif;
+      background: linear-gradient(135deg, #0a0f1b 0%, #05070d 100%);
+      color: #e9edf7;
+      padding: 40px 20px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 36px; margin-bottom: 8px; }
+    .subtitle { color: #9fb2c7; margin-bottom: 32px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat {
+      background: rgba(17, 24, 39, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .label { color: #9fb2c7; font-size: 14px; margin-bottom: 8px; }
+    .value { font-size: 28px; font-weight: 700; color: #5ee0ff; }
+    .info {
+      background: rgba(94, 224, 255, 0.1);
+      border: 1px solid rgba(94, 224, 255, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .info-title { font-weight: 600; margin-bottom: 4px; }
+    .info-text { color: #9fb2c7; font-size: 14px; }
+    a {
+      display: inline-block;
+      padding: 10px 16px;
+      background: rgba(94, 224, 255, 0.15);
+      border: 1px solid rgba(94, 224, 255, 0.3);
+      border-radius: 8px;
+      color: #5ee0ff;
+      text-decoration: none;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    a:hover { background: rgba(94, 224, 255, 0.25); transform: translateY(-2px); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Live Server Statistics</h1>
+    <p class="subtitle">Real-time performance metrics</p>
+    
+    <div class="grid">
+      <div class="stat">
+        <div class="label">Uptime</div>
+        <div class="value">{{UPTIME}}s</div>
+      </div>
+      <div class="stat">
+        <div class="label">Total Requests</div>
+        <div class="value">{{TOTAL_REQUESTS}}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Avg Response</div>
+        <div class="value">{{AVG_RESPONSE}}ms</div>
+      </div>
+      <div class="stat">
+        <div class="label">Thread Pool</div>
+        <div class="value">{{THREAD_COUNT}}</div>
+      </div>
+    </div>
+
+    <div class="info">
+      <div class="info-title">Security Features Active</div>
+      <div class="info-text">Rate limiting: 30 req/min per IP • Request timeout: 5s • Max request size: 8KB</div>
+    </div>
+
+    <a href="/">Back to home</a>
+  </div>
+</body>
+</html>

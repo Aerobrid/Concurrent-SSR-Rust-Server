@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rust Server</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; } 
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: 'Space Grotesk', sans-serif;
+      background: linear-gradient(135deg, #0a0f1b 0%, #05070d 100%);
+      color: #e9edf7;
+      padding: 20px;
+    }
+    .panel {
+      background: rgba(17, 24, 39, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 520px;
+      width: 100%;
+      display: grid;
+      gap: 16px;
+      text-align: center;
+    }
+    h1 { font-size: 30px; }
+    .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    .split-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    a {
+      padding: 10px 12px;
+      background: rgba(94, 224, 255, 0.15);
+      border: 1px solid rgba(94, 224, 255, 0.3);
+      border-radius: 8px;
+      color: #5ee0ff;
+      text-decoration: none;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    a:hover { background: rgba(94, 224, 255, 0.25); transform: translateY(-1px); }
+    .section { text-align: left; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 14px; background: rgba(255,255,255,0.03); }
+    .section h2 { font-size: 16px; margin-bottom: 6px; }
+    .section p { color: #9fb2c7; font-size: 14px; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Rust Web Server</h1>
+    <div class="links">
+      <a href="/">Home</a>
+      <a href="/stats">Stats</a>
+      <a href="/">Refresh</a>
+    </div>
+    
+    <div class="split-links">
+      <a href="/logs">View logs</a>
+    </div>
+    <div class="split-links">
+      <a href="/sleep">Test slow endpoint</a>
+    </div>
+
+    <div class="section">
+      <h2>Security Features</h2>
+      <p>Rate limiting • Request timeouts • Size limits • IP tracking • Request logging</p>
+    </div>
+    <div class="section">
+      <h2>Performance</h2>
+      <p>4-thread pool • Non-blocking • Graceful shutdown • Response time tracking</p>
+    </div>
+    <div class="section">
+      <h2>Endpoint</h2>
+      <p>http://127.0.0.1:7878</p>
+    </div>
+  </div>
+</body>
+</html>
