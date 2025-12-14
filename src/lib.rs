@@ -10,14 +10,14 @@ pub struct ThreadPool {
     sender: Option<mpsc::Sender<Job>>,
 }
 
-// job is a closure that runs once + can be sent across threads
+// job is a closure that runs once + can be sent across threads + not sure how long the thread (worker) will take to execute job
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 impl ThreadPool {
     // creates thread pool with fixed number of workers
-    // panics if size is 0
     // fixed-size prevents thread exhaustion attacks
     pub fn new(size: usize) -> ThreadPool {
+        // panics if size is 0
         assert!(size > 0, "Thread pool size must be greater than 0");
 
         // Multiple Producer Single Consumer -> create a channel for sending jobs (connections) to workers
@@ -109,5 +109,75 @@ impl Worker {
             id,
             thread: Some(thread),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Verifies that ThreadPool::new creates the correct number of worker threads.
+    #[test]
+    fn test_threadpool_new_creates_workers() {
+        let pool = ThreadPool::new(4);
+        assert_eq!(pool.workers.len(), 4);
+    }
+
+    /// Ensures ThreadPool panics with size 0 to prevent invalid pool creation.
+    #[test]
+    #[should_panic(expected = "Thread pool size must be greater than 0")]
+    fn test_threadpool_new_panics_on_zero() {
+        ThreadPool::new(0);
+    }
+
+    /// Tests that a single job executes and increments the counter atomically.
+    #[test]
+    fn test_threadpool_execute_runs_job() {
+        let pool = ThreadPool::new(2);
+        let counter = Arc::new(AtomicUsize::new(0));
+        let c = Arc::clone(&counter);
+
+        pool.execute(move || {
+            c.fetch_add(1, Ordering::SeqCst);
+        });
+
+        thread::sleep(std::time::Duration::from_millis(100));
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    /// Validates that multiple jobs execute in sequence without losing count.
+    #[test]
+    fn test_threadpool_execute_multiple_jobs() {
+        let pool = ThreadPool::new(2);
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..5 {
+            let c = Arc::clone(&counter);
+            pool.execute(move || {
+                c.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+
+        thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(counter.load(Ordering::SeqCst), 5);
+    }
+
+    /// Tests concurrent execution: 4 workers handle 10 jobs correctly under load.
+    #[test]
+    fn test_threadpool_concurrent_execution() {
+        let pool = ThreadPool::new(4);
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..10 {
+            let c = Arc::clone(&counter);
+            pool.execute(move || {
+                thread::sleep(std::time::Duration::from_millis(10));
+                c.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+
+        thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(counter.load(Ordering::SeqCst), 10);
     }
 }

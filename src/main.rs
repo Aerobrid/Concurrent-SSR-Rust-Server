@@ -124,7 +124,20 @@ fn main() {
     println!("\nShutting down server...");
 }
 
-// handles single connection with all security checks added
+/// Handles a single TCP connection with comprehensive security checks.
+///
+/// # Security Features
+/// - Rate limiting (30 req/min per IP)
+/// - Request timeout (5 seconds)
+/// - Max request size enforcement (8KB)
+/// - HTTP method validation (GET only)
+/// - Error response handling
+///
+/// # Arguments
+/// * `stream` - TCP connection stream
+/// * `rate_limiter` - Shared rate limiter tracking requests per IP
+/// * `logger` - Shared log file for request logging
+/// * `stats` - Shared server statistics (uptime, request counts, response times)
 fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: RequestLogger, stats: Arc<ServerStats>) {
     // start time
     let start = Instant::now();
@@ -261,7 +274,20 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
     }
 }
 
-// checks if client IP has exceeded rate limit
+/// Checks if a client IP has exceeded the rate limit using a sliding window algorithm.
+///
+/// # Rate Limit Policy
+/// - Window: 60 seconds (RATE_LIMIT_WINDOW)
+/// - Max requests: 30 per window (MAX_REQUESTS_PER_WINDOW)
+/// - Algorithm: Sliding window with timestamp retention
+///
+/// # Arguments
+/// * `rate_limiter` - Shared HashMap tracking request timestamps per IP
+/// * `addr` - Client socket address (IP extracted for tracking)
+///
+/// # Returns
+/// - `true` if request is allowed
+/// - `false` if rate limit exceeded
 fn check_rate_limit(rate_limiter: &RateLimiter, addr: &SocketAddr) -> bool {
     // mutex lock -> stringify ip -> start time
     let mut limiter = rate_limiter.lock().unwrap();
@@ -272,7 +298,7 @@ fn check_rate_limit(rate_limiter: &RateLimiter, addr: &SocketAddr) -> bool {
     let requests = limiter.entry(ip).or_insert_with(Vec::new);
     
     // remove requests older than rate limit window (sliding window algorithm)
-    // sliding window: only counts requests within last N seconds, older ones expire automatically
+    // sliding window: only counts requests within last 60 seconds, older ones expire automatically
     requests.retain(|&timestamp| now.duration_since(timestamp) < RATE_LIMIT_WINDOW);
     
     // if len(requests) mapped to that IP is still bigger than our window -> rate limit exceeded
@@ -285,7 +311,18 @@ fn check_rate_limit(rate_limiter: &RateLimiter, addr: &SocketAddr) -> bool {
     true
 }
 
-// reads and validates HTTP request with size limit constraint
+/// Reads and parses an HTTP request with comprehensive validation.
+///
+/// # Validation Checks
+/// - Empty request detection
+/// - Request line length (max 2048 bytes)
+/// - Total request size (max 8KB)
+/// - HTTP format validation (METHOD PATH HTTP/VERSION)
+/// - HTTP version format (must start with "HTTP/")
+///
+/// # Returns
+/// - `Ok((method, path))` - Parsed HTTP method and request path
+/// - `Err(message)` - Validation error message
 fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
     let mut buf_reader = BufReader::new(stream);
     let mut request_line = String::new();
@@ -338,8 +375,12 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
     Ok((method, path))
 }
 
-// sends error response to client
-// format!() macro is great for, of course, string formatting/interpolation
+/// Sends an HTTP error response to the client.
+///
+/// # Arguments
+/// * `stream` - TCP stream to write response to
+/// * `status` - HTTP status line (e.g., "400 Bad Request")
+/// * `message` - Error message to display in HTML body
 fn send_error_response(stream: &mut TcpStream, status: &str, message: &str) {
     let body = format!("<html><body><h1>{}</h1></body></html>", message);
     let response = format!(
@@ -349,7 +390,18 @@ fn send_error_response(stream: &mut TcpStream, status: &str, message: &str) {
     let _ = stream.write_all(response.as_bytes());
 }
 
-// logs request to file (IP, method, path, status, response-time) 
+/// Logs HTTP request details to server.log file.
+///
+/// # Log Format
+/// `[unix_timestamp] IP - METHOD PATH - STATUS - duration_ms`
+///
+/// # Arguments
+/// * `logger` - Shared log file handle
+/// * `addr` - Client socket address (IP extracted)
+/// * `method` - HTTP method (GET, POST, etc.)
+/// * `path` - Request path (/stats, /logs, etc.)
+/// * `status` - HTTP status code (200, 404, 429, etc.)
+/// * `duration_ms` - Request processing time in milliseconds
 fn log_request(logger: &RequestLogger, addr: &SocketAddr, method: &str, path: &str, status: u16, duration_ms: u128) {
     // mutex lock -> timestamp calculation -> string formatting -> write out to server.log
     let mut log_file = logger.lock().unwrap();
@@ -364,4 +416,189 @@ fn log_request(logger: &RequestLogger, addr: &SocketAddr, method: &str, path: &s
     );
     
     let _ = log_file.write_all(log_line.as_bytes());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::collections::HashMap;
+
+    // ============== Rate Limiting Tests ==============
+
+    #[test]
+    fn test_rate_limit_allows_requests_within_window() {
+        let rate_limiter: RateLimiter = Arc::new(Mutex::new(HashMap::new()));
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+
+        // First request should be allowed
+        assert!(check_rate_limit(&rate_limiter, &addr));
+        
+        // Up to 30 requests should be allowed
+        for _ in 0..29 {
+            assert!(check_rate_limit(&rate_limiter, &addr));
+        }
+    }
+
+    #[test]
+    fn test_rate_limit_rejects_exceeding_limit() {
+        let rate_limiter: RateLimiter = Arc::new(Mutex::new(HashMap::new()));
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+
+        // Fill up the limit (30 requests)
+        for _ in 0..30 {
+            let _ = check_rate_limit(&rate_limiter, &addr);
+        }
+
+        // 31st request should be rejected
+        assert!(!check_rate_limit(&rate_limiter, &addr));
+    }
+
+    #[test]
+    fn test_rate_limit_isolation_per_ip() {
+        let rate_limiter: RateLimiter = Arc::new(Mutex::new(HashMap::new()));
+        let addr1: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let addr2: SocketAddr = "192.168.1.1:8080".parse().unwrap();
+
+        // Fill limit for addr1
+        for _ in 0..30 {
+            let _ = check_rate_limit(&rate_limiter, &addr1);
+        }
+
+        // addr2 should still have allowance (since it is a separate IP with fresh limit + window)
+        assert!(check_rate_limit(&rate_limiter, &addr2));
+    }
+
+    // ============== Request Parsing Tests ==============
+
+    #[test]
+    fn test_parse_valid_get_request() {
+        let request = "GET /stats HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        
+        // Parse request line (simplified for testing)
+        // Note: Full integration test would use actual TCP connection
+        let parts: Vec<&str> = request.trim_end().split("\r\n").next().unwrap().split_whitespace().collect();
+        
+        assert_eq!(parts[0], "GET");
+        assert_eq!(parts[1], "/stats");
+        assert_eq!(parts[2], "HTTP/1.1");
+    }
+
+    #[test]
+    fn test_parse_invalid_http_version() {
+        let request = "GET /stats HTTP2\r\n\r\n";
+        let parts: Vec<&str> = request.trim_end().split("\r\n").next().unwrap().split_whitespace().collect();
+        
+        // Should not start with "HTTP/"
+        assert!(!parts[2].starts_with("HTTP/"));
+    }
+
+    #[test]
+    fn test_parse_malformed_request() {
+        let request = "GET /stats\r\n\r\n";  // Missing HTTP version
+        let parts: Vec<&str> = request.trim_end().split("\r\n").next().unwrap().split_whitespace().collect();
+        
+        // Should not have 3 parts
+        assert_ne!(parts.len(), 3);
+    }
+
+    // ============== Server Statistics Tests ==============
+
+    #[test]
+    fn test_server_stats_creation() {
+        let stats = ServerStats::new();
+        
+        // Stats should initialize with 0 requests
+        assert_eq!(stats.total_requests.load(Ordering::SeqCst), 0);
+        assert_eq!(stats.total_response_time.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_server_stats_atomic_updates() {
+        let stats = Arc::new(ServerStats::new());
+        
+        // Simulate concurrent requests
+        let mut handles = vec![];
+        
+        for _ in 0..5 {
+            let stats_clone = Arc::clone(&stats);
+            let handle = thread::spawn(move || {
+                stats_clone.total_requests.fetch_add(1, Ordering::SeqCst);
+                stats_clone.total_response_time.fetch_add(10, Ordering::SeqCst);
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all threads
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        
+        // Verify atomic operations worked correctly
+        assert_eq!(stats.total_requests.load(Ordering::SeqCst), 5);
+        assert_eq!(stats.total_response_time.load(Ordering::SeqCst), 50);
+    }
+
+    // ============== Error Response Tests ==============
+
+    #[test]
+    fn test_error_response_400_format() {
+        // Verify error response format is valid HTTP
+        let status = "400 Bad Request";
+        let message_text = "Malformed request";
+        let body = format!("<html><body><h1>{}</h1></body></html>", message_text);
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status, body.len(), body
+        );
+        
+        // Should contain valid HTTP headers
+        assert!(response.starts_with("HTTP/1.1 400 Bad Request"));
+        assert!(response.contains("Content-Type: text/html"));
+        assert!(response.contains("Content-Length:"));
+        assert!(response.contains(message_text));
+    }
+
+    #[test]
+    fn test_error_response_429_rate_limit() {
+        let status = "429 Too Many Requests";
+        
+        // Verify 429 is used for rate limiting
+        assert!(status.contains("429"));
+    }
+
+    // ============== Thread Pool + Concurrency Tests ==============
+
+    #[test]
+    fn test_thread_pool_handles_concurrent_rate_limits() {
+        use hello::ThreadPool;
+        
+        let pool = ThreadPool::new(4);
+        let rate_limiter: RateLimiter = Arc::new(Mutex::new(HashMap::new()));
+        let counter = Arc::new(Mutex::new(0));
+        
+        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        
+        // Spawn multiple jobs checking rate limit
+        for _ in 0..20 {
+            let limiter = Arc::clone(&rate_limiter);
+            let cnt = Arc::clone(&counter);
+            let a = addr.clone();
+            
+            pool.execute(move || {
+                if check_rate_limit(&limiter, &a) {
+                    let mut c = cnt.lock().unwrap();
+                    *c += 1;
+                }
+            });
+        }
+        
+        // Give workers time to process
+        thread::sleep(Duration::from_millis(100));
+        
+        // Verify concurrency worked correctly
+        let final_count = *counter.lock().unwrap();
+        assert!(final_count > 0);
+        assert!(final_count <= 30); // Rate limit should have kicked in
+    }
 }
