@@ -16,7 +16,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 impl ThreadPool {
     // creates thread pool with fixed number of workers
     // fixed-size prevents thread exhaustion attacks
-    #[must_use] 
+    #[must_use]
     pub fn new(size: usize) -> ThreadPool {
         // panics if size is 0
         assert!(size > 0, "Thread pool size must be greater than 0");
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Thread pool size must be greater than 0")]
     fn test_threadpool_new_panics_on_zero() {
-        ThreadPool::new(0);
+        let _ = ThreadPool::new(0);
     }
 
     /// Tests that a single job executes and increments the counter atomically.
