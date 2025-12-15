@@ -84,10 +84,10 @@ fn main() {
     
     // terminal configuration print for dev logs
     println!("Server running on http://127.0.0.1:7878");
-    println!("Thread pool: {} workers", THREAD_POOL_SIZE);
+    println!("Thread pool: {THREAD_POOL_SIZE} workers");
     println!("Rate limit: {}/min per IP | Timeout: {}s | Max size: {}KB", 
              MAX_REQUESTS_PER_WINDOW, REQUEST_TIMEOUT.as_secs(), MAX_REQUEST_SIZE / 1024);
-    println!("Logging to: {}", LOG_FILE);
+    println!("Logging to: {LOG_FILE}");
     println!("Endpoints: / | /sleep | /logs | /stats\n");
 
     // main server loop: runs until Ctrl+C sets running to false
@@ -115,7 +115,7 @@ fn main() {
             }
             // ACTUAL ERROR (network problem, OS issue, etc)            
             Err(e) => {
-                eprintln!("Connection error: {}", e);
+                eprintln!("Connection error: {e}");
                 thread::sleep(Duration::from_millis(50));
             }
         }
@@ -144,27 +144,24 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
     
     // set timeouts to prevent slowloris attacks
     if let Err(e) = stream.set_read_timeout(Some(REQUEST_TIMEOUT)) {
-        eprintln!("Failed to set read timeout: {}", e);
+        eprintln!("Failed to set read timeout: {e}");
         return;
     }
     if let Err(e) = stream.set_write_timeout(Some(REQUEST_TIMEOUT)) {
-        eprintln!("Failed to set write timeout: {}", e);
+        eprintln!("Failed to set write timeout: {e}");
         return;
     }
 
     // get client IP for rate limiting and logging (IP check)
-    let client_addr = match stream.peer_addr() {
-        Ok(addr) => addr,
-        Err(_) => {
-            send_error_response(&mut stream, "500 Internal Server Error", "Unable to identify client");
-            return;
-        }
+    let client_addr = if let Ok(addr) = stream.peer_addr() { addr } else {
+        send_error_response(&mut stream, "500 Internal Server Error", "Unable to identify client");
+        return;
     };
 
     // rate limit check before processing request
     if !check_rate_limit(&rate_limiter, &client_addr) {
         log_request(&logger, &client_addr, "RATE_LIMITED", "/", 429, start.elapsed().as_millis());
-        println!("Rate limit exceeded: {}", client_addr);
+        println!("Rate limit exceeded: {client_addr}");
         send_error_response(&mut stream, "429 Too Many Requests", "Rate limit exceeded. Please try again later.");
         return;
     }
@@ -174,7 +171,7 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
         Ok(req) => req,
         Err(e) => {
             log_request(&logger, &client_addr, "BAD_REQUEST", "/", 400, start.elapsed().as_millis());
-            println!("Bad request from {}: {}", client_addr, e);
+            println!("Bad request from {client_addr}: {e}");
             send_error_response(&mut stream, "400 Bad Request", "Malformed request");
             return;
         }
@@ -183,7 +180,7 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
     // update stats ATOMICALLY upon a successful request (remember multiple threads can access)
     stats.total_requests.fetch_add(1, Ordering::SeqCst);
     // for developer log only
-    println!("{} {} from {}", method, path, client_addr);
+    println!("{method} {path} from {client_addr}");
 
     // route the request to appropriate handler using match (pattern/expression) based primarily on its path
     let (status_line, filename, status_code) = match (method.as_str(), path.as_str()) {
@@ -198,8 +195,7 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
             if let Ok(logs) = fs::read_to_string(LOG_FILE) {
                 let length = logs.len();
                 let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    length, logs
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n{logs}"
                 );
                 let elapsed = start.elapsed().as_millis();
                 stats.total_response_time.fetch_add(elapsed as u64, Ordering::SeqCst);
@@ -220,16 +216,15 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
             // server-side rendering
             let stats_html = fs::read_to_string("stats.html")
                 .unwrap_or_else(|_| String::from("<html><body><h1>Stats page not found</h1></body></html>"))
-                .replace("{{UPTIME}}", &format!("{}", uptime))
-                .replace("{{TOTAL_REQUESTS}}", &format!("{}", total_reqs))
-                .replace("{{AVG_RESPONSE}}", &format!("{}", avg_time))
-                .replace("{{THREAD_COUNT}}", &format!("{}", THREAD_POOL_SIZE));
+                .replace("{{UPTIME}}", &format!("{uptime}"))
+                .replace("{{TOTAL_REQUESTS}}", &format!("{total_reqs}"))
+                .replace("{{AVG_RESPONSE}}", &format!("{avg_time}"))
+                .replace("{{THREAD_COUNT}}", &format!("{THREAD_POOL_SIZE}"));
             
             // server reply a.k.a response to be sent over our tcp stream
             let length = stats_html.len();
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                length, stats_html
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n{stats_html}"
             );
             // update ATOMICALLY + record in server.log
             let elapsed = start.elapsed().as_millis();
@@ -254,20 +249,19 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
             let length = contents.len();
             let elapsed = start.elapsed().as_millis();
             let response = format!(
-                "{}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nX-Response-Time: {}ms\r\n\r\n{}",
-                status_line, length, elapsed, contents
+                "{status_line}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {length}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nX-Response-Time: {elapsed}ms\r\n\r\n{contents}"
             );
             
             stats.total_response_time.fetch_add(elapsed as u64, Ordering::SeqCst);
             
             if let Err(e) = stream.write_all(response.as_bytes()) {
-                eprintln!("Failed to send response: {}", e);
+                eprintln!("Failed to send response: {e}");
             } else {
                 log_request(&logger, &client_addr, &method, &path, status_code, elapsed);
             }
         }
         Err(e) => {
-            eprintln!("Failed to read file {}: {}", filename, e);
+            eprintln!("Failed to read file {filename}: {e}");
             log_request(&logger, &client_addr, &method, &path, 500, start.elapsed().as_millis());
             send_error_response(&mut stream, "500 Internal Server Error", "Failed to load page");
         }
@@ -277,12 +271,12 @@ fn handle_connection(mut stream: TcpStream, rate_limiter: RateLimiter, logger: R
 /// Checks if a client IP has exceeded the rate limit using a sliding window algorithm.
 ///
 /// # Rate Limit Policy
-/// - Window: 60 seconds (RATE_LIMIT_WINDOW)
-/// - Max requests: 30 per window (MAX_REQUESTS_PER_WINDOW)
+/// - Window: 60 seconds (`RATE_LIMIT_WINDOW`)
+/// - Max requests: 30 per window (`MAX_REQUESTS_PER_WINDOW`)
 /// - Algorithm: Sliding window with timestamp retention
 ///
 /// # Arguments
-/// * `rate_limiter` - Shared HashMap tracking request timestamps per IP
+/// * `rate_limiter` - Shared `HashMap` tracking request timestamps per IP
 /// * `addr` - Client socket address (IP extracted for tracking)
 ///
 /// # Returns
@@ -295,7 +289,7 @@ fn check_rate_limit(rate_limiter: &RateLimiter, addr: &SocketAddr) -> bool {
     let now = Instant::now();
     
     // get or create request history for this IP
-    let requests = limiter.entry(ip).or_insert_with(Vec::new);
+    let requests = limiter.entry(ip).or_default();
     
     // remove requests older than rate limit window (sliding window algorithm)
     // sliding window: only counts requests within last 60 seconds, older ones expire automatically
@@ -332,11 +326,11 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
         Ok(0) => return Err("Empty request".to_string()),
         Ok(n) if n > 2048 => return Err("Request line too long".to_string()),
         Ok(_) => {},
-        Err(e) => return Err(format!("Read error: {}", e)),
+        Err(e) => return Err(format!("Read error: {e}")),
     }
     
     // parse (split) request line into components
-    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() != 3 {
         return Err("Invalid request format".to_string());
     }
@@ -368,7 +362,7 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
                     break;
                 }
             }
-            Err(e) => return Err(format!("Read error: {}", e)),
+            Err(e) => return Err(format!("Read error: {e}")),
         }
     }
     
@@ -382,7 +376,7 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, String), String> {
 /// * `status` - HTTP status line (e.g., "400 Bad Request")
 /// * `message` - Error message to display in HTML body
 fn send_error_response(stream: &mut TcpStream, status: &str, message: &str) {
-    let body = format!("<html><body><h1>{}</h1></body></html>", message);
+    let body = format!("<html><body><h1>{message}</h1></body></html>");
     let response = format!(
         "HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status, body.len(), body

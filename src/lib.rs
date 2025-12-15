@@ -16,6 +16,7 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 impl ThreadPool {
     // creates thread pool with fixed number of workers
     // fixed-size prevents thread exhaustion attacks
+    #[must_use] 
     pub fn new(size: usize) -> ThreadPool {
         // panics if size is 0
         assert!(size > 0, "Thread pool size must be greater than 0");
@@ -90,17 +91,14 @@ impl Worker {
                 // recv() releases lock while waiting
                 let message = receiver.lock().unwrap().recv();
 
-                match message {
-                    Ok(job) => {
-                        println!("Worker {} executing job", id);
-                        job();
-                        println!("Worker {} finished job", id);
-                    }
-                    Err(_) => {
-                        // channel closed -> break out of loop and shutdown
-                        println!("Worker {} disconnected; shutting down", id);
-                        break;
-                    }
+                if let Ok(job) = message {
+                    println!("Worker {id} executing job");
+                    job();
+                    println!("Worker {id} finished job");
+                } else {
+                    // channel closed -> break out of loop and shutdown
+                    println!("Worker {id} disconnected; shutting down");
+                    break;
                 }
             }
         });
